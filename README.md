@@ -1,3 +1,6 @@
+AI Voice Agents Challenge – Day 1 Completion
+This repository contains my implementation for Day 1 of the Murf AI Voice Agents Challenge, where the goal was to get the starter project running end-to-end and successfully interact with a real-time voice agent powered by LiveKit and Murf Falcon TTS.
+
 # AI Voice Agents Challenge - Starter Repository
 
 Welcome to the **AI Voice Agents Challenge** by [murf.ai](https://murf.ai)!
