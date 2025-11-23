@@ -1,5 +1,8 @@
-AI Voice Agents Challenge – Day 1 Completion
+# AI Voice Agents Challenge - Day - 1 Completion 
 This repository contains my implementation for Day 1 of the Murf AI Voice Agents Challenge, where the goal was to get the starter project running end-to-end and successfully interact with a real-time voice agent powered by LiveKit and Murf Falcon TTS.
+
+# AI Coffee Shop Barista Agent Voice Agents Challenge - Day - 2 Completion 
+I built a fully functional AI Barista Voice Agent that can listen to users, ask clarifying questions, and save structured coffee orders into a backend JSON file using LiveKit Agents, Deepgram STT, Google LLM, and Murf TTS. I also added a Next.js frontend page to fetch and display the latest order, completing an end-to-end voice-to-screen system where a spoken coffee order becomes a stored and visible digital record.
 
 # AI Voice Agents Challenge - Starter Repository
 

@@ -1,6 +1,10 @@
+import json
 import logging
-
+import os
+from datetime import datetime
 from dotenv import load_dotenv
+from pathlib import Path
+
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -12,94 +16,134 @@ from livekit.agents import (
     cli,
     metrics,
     tokenize,
-    # function_tool,
-    # RunContext
+    function_tool,
+    RunContext,
 )
 from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 logger = logging.getLogger("agent")
+logger.setLevel(logging.INFO)
 
+# load env
 load_dotenv(".env.local")
 
+# Orders file path (relative to backend folder)
+BASE_DIR = Path(__file__).resolve().parent.parent  # backend/src -> backend
+ORDERS_FILE = BASE_DIR / "orders.json"
 
-class Assistant(Agent):
+
+# Utility: append order to JSON file (keeps a list)
+def append_order_to_file(order: dict):
+    try:
+        ORDERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        if ORDERS_FILE.exists():
+            with ORDERS_FILE.open("r", encoding="utf-8") as f:
+                try:
+                    data = json.load(f)
+                    if not isinstance(data, list):
+                        data = []
+                except Exception:
+                    data = []
+        else:
+            data = []
+
+        data.append(order)
+
+        with ORDERS_FILE.open("w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+        logger.info(f"Saved order to {ORDERS_FILE}")
+    except Exception as e:
+        logger.exception("Failed to save order to file: %s", e)
+
+
+# Define a function tool that the LLM/agent can call to persist the order.
+# The function signature must be serializable by the agent framework.
+@function_tool
+async def save_order_tool(ctx: RunContext, order: dict):
+    """
+    Save the completed order to the orders.json file.
+    The `order` param is expected to match the shape:
+    {
+      "drinkType": "string",
+      "size": "string",
+      "milk": "string",
+      "extras": ["string"],
+      "name": "string",
+      "timestamp": "ISO8601"
+    }
+    """
+    try:
+        # add a timestamp if not present
+        if "timestamp" not in order:
+            order["timestamp"] = datetime.utcnow().isoformat() + "Z"
+        append_order_to_file(order)
+        return {"status": "ok", "message": "order saved"}
+    except Exception as e:
+        logger.exception("save_order_tool error: %s", e)
+        return {"status": "error", "message": str(e)}
+
+
+class BaristaAgent(Agent):
     def __init__(self) -> None:
-        super().__init__(
-            instructions="""You are a helpful voice AI assistant. The user is interacting with you via voice, even if you perceive the conversation as text.
-            You eagerly assist users with their questions by providing information from your extensive knowledge.
-            Your responses are concise, to the point, and without any complex formatting or punctuation including emojis, asterisks, or other symbols.
-            You are curious, friendly, and have a sense of humor.""",
-        )
+        # The instructions tell the LLM to behave as a barista and to call the
+        # save_order_tool once the order is complete.
+        instructions = """
+You are a friendly coffee shop barista for BrewMate Café. 
+Your goal is to take voice orders and collect a structured order object with the following fields:
+{
+  "drinkType": "string",
+  "size": "string",
+  "milk": "string",
+  "extras": ["string"],
+  "name": "string"
+}
 
-    # To add tools, use the @function_tool decorator.
-    # Here's an example that adds a simple weather tool.
-    # You also have to add `from livekit.agents import function_tool, RunContext` to the top of this file
-    # @function_tool
-    # async def lookup_weather(self, context: RunContext, location: str):
-    #     """Use this tool to look up current weather information in the given location.
-    #
-    #     If the location is not supported by the weather service, the tool will indicate this. You must tell the user the location's weather is unavailable.
-    #
-    #     Args:
-    #         location: The location to look up weather information for (e.g. city name)
-    #     """
-    #
-    #     logger.info(f"Looking up weather for {location}")
-    #
-    #     return "sunny with a temperature of 70 degrees."
+Behavior rules (VERY IMPORTANT):
+1. Ask short clarifying questions until every field in the order object is filled.
+2. Accept natural answers and extract the values. If a user gives multiple pieces of info at once, fill all relevant fields.
+3. For `size`, accept "small", "medium", or "large" (normalise capitalization).
+4. For `extras`, accept items like 'caramel', 'sugar', 'whipped cream', 'soy', 'extra shot' — produce an array of strings (may be empty).
+5. For `milk`, accept 'whole', 'skim', 'almond', 'oat', 'soy', 'none' (or similar).
+6. For `name`, accept any short identifier (first name is fine).
+7. After you have all fields, confirm the order verbally to the user (one short confirmation sentence).
+8. THEN call the function `save_order_tool(order)` with the final order object (including a timestamp).
+9. Use a warm and concise tone. Avoid excessive punctuation or emojis.
+
+If the user asks for changes before confirmation, modify the order (e.g., user says "make that medium" -> update size).
+"""
+        super().__init__(instructions=instructions)
 
 
 def prewarm(proc: JobProcess):
+    # prepare VAD model (silero) so start-up latency is lower
+    logger.info("Prewarming VAD")
     proc.userdata["vad"] = silero.VAD.load()
 
 
 async def entrypoint(ctx: JobContext):
-    # Logging setup
-    # Add any other context you want in all log entries here
+    # Add helpful logging context for easier debugging
     ctx.log_context_fields = {
         "room": ctx.room.name,
     }
 
-    # Set up a voice AI pipeline using OpenAI, Cartesia, AssemblyAI, and the LiveKit turn detector
+    # Build the session with STT / LLM / TTS etc.
     session = AgentSession(
-        # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
-        # See all available models at https://docs.livekit.io/agents/models/stt/
         stt=deepgram.STT(model="nova-3"),
-        # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
-        # See all available models at https://docs.livekit.io/agents/models/llm/
-        llm=google.LLM(
-                model="gemini-2.5-flash",
-            ),
-        # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
-        # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
+        llm=google.LLM(model="gemini-2.5-flash"),
         tts=murf.TTS(
-                voice="en-US-matthew", 
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
-        # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
-        # See more at https://docs.livekit.io/agents/build/turns
+            voice="en-US-matthew",
+            style="Conversation",
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+            text_pacing=True,
+        ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
-        # allow the LLM to generate a response while waiting for the end of turn
-        # See more at https://docs.livekit.io/agents/build/audio/#preemptive-generation
         preemptive_generation=True,
     )
 
-    # To use a realtime model instead of a voice pipeline, use the following session setup instead.
-    # (Note: This is for the OpenAI Realtime API. For other providers, see https://docs.livekit.io/agents/models/realtime/))
-    # 1. Install livekit-agents[openai]
-    # 2. Set OPENAI_API_KEY in .env.local
-    # 3. Add `from livekit.plugins import openai` to the top of this file
-    # 4. Use the following session setup instead of the version above
-    # session = AgentSession(
-    #     llm=openai.realtime.RealtimeModel(voice="marin")
-    # )
-
-    # Metrics collection, to measure pipeline performance
-    # For more information, see https://docs.livekit.io/agents/build/metrics/
+    # Metrics collector
     usage_collector = metrics.UsageCollector()
 
     @session.on("metrics_collected")
@@ -113,27 +157,22 @@ async def entrypoint(ctx: JobContext):
 
     ctx.add_shutdown_callback(log_usage)
 
-    # # Add a virtual avatar to the session, if desired
-    # # For other providers, see https://docs.livekit.io/agents/models/avatar/
-    # avatar = hedra.AvatarSession(
-    #   avatar_id="...",  # See https://docs.livekit.io/agents/models/avatar/plugins/hedra
-    # )
-    # # Start the avatar and wait for it to join
-    # await avatar.start(session, room=ctx.room)
+    # Register the tool so the LLM can call save_order_tool(order)
+    # In the livekit agents framework the decorator above is enough,
+    # but registering is still useful for clarity if needed.
+    # (No explicit registration code required in many versions.)
 
-    # Start the session, which initializes the voice pipeline and warms up the models
+    # Start the session with our BaristaAgent
     await session.start(
-        agent=Assistant(),
+        agent=BaristaAgent(),
         room=ctx.room,
-        room_input_options=RoomInputOptions(
-            # For telephony applications, use `BVCTelephony` for best results
-            noise_cancellation=noise_cancellation.BVC(),
-        ),
+        room_input_options=RoomInputOptions(noise_cancellation=noise_cancellation.BVC()),
     )
 
-    # Join the room and connect to the user
+    # Connect and wait for participants (this keeps the agent running)
     await ctx.connect()
 
 
 if __name__ == "__main__":
+    # Run the worker
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))

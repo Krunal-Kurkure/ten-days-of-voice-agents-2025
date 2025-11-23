@@ -1,0 +1,10 @@
+﻿[
+  {
+    "drinkType": "Latte",
+    "size": "Large",
+    "milk": "Almond",
+    "extras": ["Whipped Cream"],
+    "name": "TestUser",
+    "timestamp": "2025-11-23T11:57:13.3094689+05:30"
+  }
+]
