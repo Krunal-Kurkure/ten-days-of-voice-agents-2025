@@ -4,6 +4,9 @@ This repository contains my implementation for Day 1 of the Murf AI Voice Agents
 # AI Coffee Shop Barista Agent Voice Agents Challenge - Day - 2 Completion 
 I built a fully functional AI Barista Voice Agent that can listen to users, ask clarifying questions, and save structured coffee orders into a backend JSON file using LiveKit Agents, Deepgram STT, Google LLM, and Murf TTS. I also added a Next.js frontend page to fetch and display the latest order, completing an end-to-end voice-to-screen system where a spoken coffee order becomes a stored and visible digital record.
 
+# AI Health & Wellness Voice Companion Challenge - Day - 3 Completion 
+Today we built a supportive, grounded Health & Wellness Voice Companion that performs a daily emotional check-in, asks about mood, energy, stress, and simple goals, carries a short conversation, and then saves each session’s insights into a JSON file so future check-ins can reference past days. The agent avoids medical advice, sticks to small actionable suggestions, gives a recap at the end, and uses JSON persistence to build continuity over time. We also reviewed how to structure logs, how the agent recalls previous entries, and explored optional advanced goals like MCP integrations with tools such as Notion, Todoist, or Zapier for task creation, weekly reflections, and reminders—all building toward a richer personal wellness assistant.
+
 # AI Voice Agents Challenge - Starter Repository
 
 Welcome to the **AI Voice Agents Challenge** by [murf.ai](https://murf.ai)!

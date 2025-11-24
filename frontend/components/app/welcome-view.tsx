@@ -1,4 +1,5 @@
 import { Button } from '@/components/livekit/button';
+import AnimatedBanner from '@/components/AnimatedBanner';
 
 function WelcomeImage() {
   return (
@@ -36,6 +37,9 @@ export const WelcomeView = ({
         <p className="text-foreground max-w-prose pt-1 leading-6 font-medium">
           Chat live with your voice AI agent
         </p>
+
+        <AnimatedBanner />
+      
 
         <Button variant="primary" size="lg" onClick={onStartCall} className="mt-6 w-64 font-mono">
           {startButtonText}

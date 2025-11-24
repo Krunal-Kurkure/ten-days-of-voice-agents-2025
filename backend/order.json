@@ -1,0 +1,12 @@
+[
+    {
+    "drinkType": "latte",
+    "size": "large",
+    "milk": "oat",
+    "extras": ["extra shot"],
+    "name": "Krunal",
+    "raw_text": "I'd like a large oat milk latte for Krunal, please.",
+    "timestamp": "2025-11-24T10:52:04.843Z",
+    "id": 1761513124843
+  }
+]
